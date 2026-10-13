@@ -56,6 +56,25 @@ def complete_predictions(path, split, limit=None):
     return len(ids) == len(set(ids)) and set(ids) == {r["image_id"] for r in rows}
 
 
+def package_submission():
+    bundle = Path("work/lab_submission.zip")
+    bundle.parent.mkdir(parents=True, exist_ok=True)
+    with zipfile.ZipFile(bundle, "w", zipfile.ZIP_DEFLATED) as archive:
+        for item in ("student_lab.py", "run_lab.py", "make_report.py", "lab_day10.ipynb",
+                     "build_notebook.py", "student_checks.py", "data/splits/meta.json",
+                     "REPORT.md", "README.md", "GUIDE.md", "RUBRIC.md", "requirements-colab.txt",
+                     "pytest.ini", ".gitignore", ".env.example"):
+            if Path(item).exists():
+                archive.write(item, item)
+        for directory in ("report", "configs", "scripts", "tests"):
+            for path in Path(directory).rglob("*"):
+                if path.is_file() and "__pycache__" not in path.parts:
+                    archive.write(path, path.as_posix())
+        for path in list(Path("work").glob("*.jsonl")) + list(Path("work").glob("*.run.json")):
+            archive.write(path, path.as_posix())
+    return bundle
+
+
 def main(args):
     python = sys.executable
     root = Path(args.checkpoints)
@@ -122,7 +141,10 @@ def main(args):
         write("report/environment.json", environment)
         run([python, "student_lab.py", "inspect-data"], "work/logs/checks.log")
         run([python, "student_lab.py", "verify-model"], "work/logs/checks.log")
-        score("E0", infer("E0"))
+        e0_predictions = infer("E0")
+        e0_run = load(Path(e0_predictions).with_suffix(".run.json"))
+        score("E0", e0_predictions, {"trainable_params": 0, "train_minutes": 0,
+                                     "peak_vram_gb": e0_run["peak_vram_gb"]})
         validation = {}
         for setup in ("E1", "E2", "E3"):
             checkpoint, info = train(setup, setup)
@@ -146,21 +168,7 @@ def main(args):
         status("build report")
         run([python, "make_report.py", "--name", args.name], "work/logs/report.log")
         status("complete")
-        bundle = Path("work/lab_submission.zip")
-        with zipfile.ZipFile(bundle, "w", zipfile.ZIP_DEFLATED) as archive:
-            for item in ("student_lab.py", "run_lab.py", "make_report.py", "lab_day10.ipynb",
-                         "build_notebook.py", "student_checks.py", "data/splits/meta.json",
-                         "REPORT.md", "README.md", "GUIDE.md", "RUBRIC.md", "requirements-colab.txt",
-                         "pytest.ini", ".gitignore", ".env.example"):
-                if Path(item).exists():
-                    archive.write(item, item)
-            for directory in ("report", "configs", "scripts", "tests"):
-                for path in Path(directory).rglob("*"):
-                    if path.is_file() and "__pycache__" not in path.parts:
-                        archive.write(path, path.as_posix())
-            # Raw outputs support inspection/re-scoring; work/ remains ignored by Git.
-            for path in list(Path("work").glob("*.jsonl")) + list(Path("work").glob("*.run.json")):
-                archive.write(path, path.as_posix())
+        bundle = package_submission()
         print(f"All mandatory experiments completed. Artifact: {bundle.resolve()}", flush=True)
     except Exception as exc:
         status("failed", error=str(exc))

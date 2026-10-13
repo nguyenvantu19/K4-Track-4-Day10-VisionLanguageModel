@@ -2,6 +2,8 @@
 import argparse
 import json
 import statistics
+import subprocess
+import sys
 from pathlib import Path
 
 from scripts.labcommon import CLASSES, read_jsonl
@@ -25,6 +27,15 @@ def generate(name):
     meta = load("data/splits/meta.json")
     model = load("report/model_checks.json")
     evidence = {key: load(f"report/evidence/{key}.json") for key in ("e0", "e1", "e2", "e3")}
+    # Earlier pipeline revisions scored E0 without resource metadata. Add only
+    # measured metadata through the original scorer, retaining identical outputs.
+    if "peak_vram_gb" not in evidence["e0"].get("meta", {}):
+        e0_run = load("work/e0.run.json")
+        subprocess.run([sys.executable, "scripts/score.py", "--pred", "work/e0.jsonl",
+                        "--name", "E0", "--out", "report/evidence/e0.json",
+                        "--meta", "trainable_params=0", "--meta", "train_minutes=0",
+                        "--meta", f"peak_vram_gb={e0_run['peak_vram_gb']}"], check=True)
+        evidence["e0"] = load("report/evidence/e0.json")
     e4_paths = sorted(Path("report/evidence").glob("e4*.json"))
     if len(e4_paths) != 2:
         raise ValueError("Both E4 data-size conditions must be scored before report generation")
