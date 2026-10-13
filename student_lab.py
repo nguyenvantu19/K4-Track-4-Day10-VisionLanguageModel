@@ -187,6 +187,8 @@ def save_checkpoint(model, directory, info, optimizer=None, scheduler=None, scal
                     "torch_rng": torch.get_rng_state(), "cuda_rng": torch.cuda.get_rng_state(),
                     "python_rng": random.getstate()}, directory / "training_state.pt")
     write_json(directory / "run.json", info)
+    print("CHECKPOINT_READY " + json.dumps({"directory": str(directory),
+          "name": info["name"], "step": info["completed_steps"]}), flush=True)
 
 
 def restore_projector(model, path):

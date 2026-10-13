@@ -55,5 +55,9 @@
   "dataset_version": "d10-21e4070301",
   "split": "test",
   "coord": "norm1000",
-  "meta": {}
+  "meta": {
+    "trainable_params": 0,
+    "peak_vram_gb": 3.7592339515686035,
+    "train_minutes": 0
+  }
 }

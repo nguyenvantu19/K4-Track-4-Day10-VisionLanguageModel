@@ -61,7 +61,7 @@ def package_submission():
     bundle.parent.mkdir(parents=True, exist_ok=True)
     with zipfile.ZipFile(bundle, "w", zipfile.ZIP_DEFLATED) as archive:
         for item in ("student_lab.py", "run_lab.py", "make_report.py", "lab_day10.ipynb",
-                     "build_notebook.py", "student_checks.py", "data/splits/meta.json",
+                     "build_notebook.py", "student_checks.py", "colab_runner.py", "data/splits/meta.json",
                      "REPORT.md", "README.md", "GUIDE.md", "RUBRIC.md", "requirements-colab.txt",
                      "pytest.ini", ".gitignore", ".env.example"):
             if Path(item).exists():

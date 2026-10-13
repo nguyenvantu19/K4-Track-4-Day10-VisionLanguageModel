@@ -61,26 +61,31 @@ def main():
        "Có thể lưu checkpoint vào Drive nếu Drive đã được mount; mặc định dùng work/checkpoints trong runtime.")
     code("%%writefile make_report.py\n" + Path("make_report.py").read_text(encoding="utf-8"))
     code("%%writefile run_lab.py\n" + Path("run_lab.py").read_text(encoding="utf-8"))
+    code("%%writefile colab_runner.py\n" + Path("colab_runner.py").read_text(encoding="utf-8"))
     md("## 7. Suy luận và chấm E1–E3\n"
        "Nạp base model mới, adapter và projector tương ứng; chạy test đủ ảnh, ghi raw output, "
        "chấm bằng scripts/score.py với số tham số, VRAM và thời gian thực tế. "
        "40 ảnh đầu của val cố định dùng chọn setup cơ sở E4; báo cáo ghi rõ đây là subset.")
     code("CHECKPOINT_ROOT = 'work/checkpoints'\n"
-         "if Path('/content/drive/MyDrive').exists():\n"
-         "    CHECKPOINT_ROOT = '/content/drive/MyDrive/day10_vlm/checkpoints'\n"
          "print('Checkpoint directory:', CHECKPOINT_ROOT)\n")
     md("## 8. E4: ablation dữ liệu và chạy toàn bộ pipeline\n"
        "Chọn cơ sở bằng validation F1, so sánh 10% và 100% ảnh train, giữ các siêu tham số khác như nhau. "
        "Run 100% được dùng lại; run 10% bắt đầu từ model gốc. E5 GRPO là phần tùy chọn chưa triển khai. "
        "Nếu dừng giữa chừng, chạy lại pipeline để tiếp tục từ checkpoint và các dự đoán đã ghi.")
-    code("!python -u run_lab.py --checkpoints \"{CHECKPOINT_ROOT}\"\n"
-         "state = json.loads(Path('work/pipeline_status.json').read_text())\n"
-         "assert state['stage'] == 'complete', state\nprint(state)\n")
+    code("from colab_runner import start_colab\n"
+         "if 'lab_thread' in globals() and lab_thread.is_alive():\n"
+         "    raise RuntimeError('Pipeline đang chạy; dùng ô theo dõi bên dưới.')\n"
+         "lab_thread = start_colab(['--checkpoints', CHECKPOINT_ROOT])\n"
+         "print('Pipeline đang chạy nền. Chờ stage=complete ở ô kiểm tra tiếp theo.')\n")
+    code("from colab_runner import poll_colab\n"
+         "state = poll_colab()\n"
+         "print('Chạy lại ô này để xem tiến độ và tải checkpoint mới.')\n")
     md("## 9. Báo cáo và xuất bài\n"
        "REPORT được tạo sau khi đủ evidence. Sáu ảnh có GT xanh và prediction đỏ; "
        "toàn bộ nhận xét lấy số từ các run thật. Check_submission cần ít nhất 5 commit trong repo nộp; "
        "commit từ các giai đoạn phát triển trên máy cá nhân và kiểm tra lại trước khi đẩy GitHub.")
-    code("from IPython.display import Markdown\ndisplay(Markdown(Path('REPORT.md').read_text()))\n"
+    code("assert json.loads(Path('work/pipeline_status.json').read_text())['stage'] == 'complete', 'Chờ pipeline hoàn thành'\n"
+         "from IPython.display import Markdown\ndisplay(Markdown(Path('REPORT.md').read_text()))\n"
          "!python scripts/check_submission.py\n")
     code("from google.colab import files\nfiles.download('work/lab_submission.zip')\n")
     notebook = {"cells": cells, "metadata": {"accelerator": "GPU", "colab": {"provenance": []},
