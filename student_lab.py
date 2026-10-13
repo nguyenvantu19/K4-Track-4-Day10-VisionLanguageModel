@@ -70,17 +70,26 @@ def get_processor():
 def load_base():
     import torch
     from transformers import BitsAndBytesConfig, Qwen3VLForConditionalGeneration
+    from transformers.utils import logging
+    logging.disable_progress_bar()
     if not torch.cuda.is_available():
         raise RuntimeError("A CUDA GPU is required. Select Colab T4 before running.")
     quant = BitsAndBytesConfig(
         load_in_4bit=True, bnb_4bit_quant_type="nf4",
         bnb_4bit_compute_dtype=torch.float16, bnb_4bit_use_double_quant=True,
-        llm_int8_skip_modules=["visual", "lm_head"],
+        # Transformers 5 matches prefixes, not arbitrary path segments.
+        llm_int8_skip_modules=["model.visual", "visual", "lm_head"],
     )
-    return Qwen3VLForConditionalGeneration.from_pretrained(
+    model = Qwen3VLForConditionalGeneration.from_pretrained(
         MODEL_ID, quantization_config=quant, dtype=torch.float16,
         device_map={"": 0}, attn_implementation="sdpa",
     )
+    from bitsandbytes.nn import Linear4bit
+    wrongly_quantized = [name for name, module in model.named_modules()
+                         if "visual" in name and isinstance(module, Linear4bit)]
+    if wrongly_quantized:
+        raise RuntimeError(f"Visual modules must remain float16: {wrongly_quantized[:3]}")
+    return model
 
 
 def user_message(row):
@@ -149,8 +158,15 @@ def apply_setup(base, setup, rank=16):
     if setup in ("E2", "E3"):
         for name, param in model.named_parameters():
             if any(part in name for part in PROJECTORS):
+                if param.__class__.__name__ == "Params4bit":
+                    raise TypeError(f"Cannot fully train quantized projector: {name}")
                 param.data = param.data.to(torch.float32)
                 param.requires_grad_(True)
+    # ViT LoRA can inherit fp16 from unquantized visual weights. GradScaler
+    # requires fp32 trainable weights/gradients; autocast still computes fp16.
+    for param in model.parameters():
+        if param.requires_grad:
+            param.data = param.data.to(torch.float32)
     trainable = sum(p.numel() for p in model.parameters() if p.requires_grad)
     print(f"{setup}: {len(matched)} LoRA modules, {trainable:,} trainable parameters", flush=True)
     return model, matched, trainable

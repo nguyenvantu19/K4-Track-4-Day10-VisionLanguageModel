@@ -100,6 +100,10 @@ def generate(name):
         if (fp or fn or parsed is None) and len(examples) < 2:
             examples.append(f"Ảnh `{entry['image_id']}`, FP={fp}, FN={fn}:\n\n```text\n{raw}\n```")
     Path("report/e0_error_analysis.json").write_text(json.dumps(error_summary, indent=2), encoding="utf-8")
+    category_names = {"invalid_json": "JSON không parse được", "images_with_fp": "phát hiện thừa/sai (FP)",
+                      "images_with_fn": "bỏ sót (FN)"}
+    dominant = sorted(category_names, key=lambda key: error_summary[key], reverse=True)[:2]
+    dominant_text = " và ".join(f"{category_names[key]} ({error_summary[key]} ảnh)" for key in dominant)
     e1_preds = {r["image_id"]: r["raw"] for r in read_jsonl("work/e1.jsonl")}
     wrong = evaluate(entries, e1_preds, coord="pixel")
     Path("report/coordinate_diagnostic.json").write_text(json.dumps(wrong, indent=2), encoding="utf-8")
@@ -130,7 +134,7 @@ def generate(name):
 
 {chr(10).join(table)}
 
-Các kết quả do `scripts/score.py` gốc tạo trên toàn bộ test; không sửa công cụ chấm. VRAM dùng `max_memory_allocated()/1024**3`, đơn vị GiB. Thời gian ở bảng là thời gian vòng train, gồm checkpoint trong vòng lặp; E0 không train. Thời gian suy luận được lưu riêng trong `work/*.run.json`.
+Các kết quả do `scripts/score.py` gốc tạo trên toàn bộ test; không sửa công cụ chấm. VRAM dùng `max_memory_allocated()/1024**3`, đơn vị GiB. Thời gian ở bảng là thời gian vòng train, gồm các checkpoint trước bước cuối, không gồm nạp model hay lưu checkpoint cuối; E0 không train. Thời gian suy luận được lưu riêng trong `work/*.run.json`.
 
 ## 10 câu hỏi
 
@@ -140,7 +144,7 @@ Các kết quả do `scripts/score.py` gốc tạo trên toàn bộ test; không
 
 ### Câu 2 — Output và lỗi của E0
 
-E0 có parse_valid_rate={evidence['e0']['parse_valid_rate']:.4f}. Kiểm tra từng ảnh ghi nhận {error_summary['invalid_json']} output không parse được, {error_summary['images_with_fp']} ảnh có FP và {error_summary['images_with_fn']} ảnh có FN. Hai nhóm lỗi được đối chiếu là phát hiện thừa/sai vị trí hoặc lớp (FP), và bỏ sót hư hại (FN); số trên cho thấy mức độ của từng nhóm. Có {error_summary['predictions_unknown_label']} box dùng lớp ngoài danh sách và {error_summary['boxes_outside_0_1000']} box vượt phạm vi tọa độ. FP chưa đủ để phân biệt box bịa với box đúng vật thể nhưng lệch vị trí; cần xem ảnh minh họa.
+E0 có parse_valid_rate={evidence['e0']['parse_valid_rate']:.4f}. Kiểm tra từng ảnh ghi nhận {error_summary['invalid_json']} output không parse được, {error_summary['images_with_fp']} ảnh có FP và {error_summary['images_with_fn']} ảnh có FN. Hai biểu hiện nhiều nhất theo số ảnh là {dominant_text}. Các nhóm có thể trùng nhau: output không parse được được scorer coi là không có dự đoán và có thể tạo FN. Có {error_summary['predictions_unknown_label']} box dùng lớp ngoài danh sách và {error_summary['boxes_outside_0_1000']} box vượt phạm vi tọa độ. FP chưa đủ để phân biệt box bịa với box đúng vật thể nhưng lệch vị trí; cần xem ảnh minh họa.
 
 {chr(10).join(examples)}
 
@@ -154,7 +158,7 @@ Chỉ phần assistant được giám sát. Prompt, token ảnh và padding có 
 
 ### Câu 5 — Lượng tử hóa và projector float32
 
-QLoRA giữ base LLM ở NF4 4-bit và học ma trận LoRA. Các trọng số lượng tử hóa không phải tham số float thông thường để cập nhật toàn phần bằng AdamW; vì vậy cấu hình skip `visual` và `lm_head`. Ở E2/E3, projector được giữ ở float32 để gradient và bước cập nhật toàn phần ổn định hơn trong vòng train dùng GradScaler fp16; matmul vẫn đi qua autocast. Float32 là lựa chọn ổn định số của lab, không phải quy luật rằng mọi projector chỉ có thể train ở float32. Checkpoint lưu adapter và `projector.pt` riêng; inference kiểm tra và nạp lại cả hai cho E2/E3.
+QLoRA giữ base LLM ở NF4 4-bit và học ma trận LoRA. Các trọng số lượng tử hóa không phải tham số float thông thường để cập nhật toàn phần bằng AdamW; vì vậy cấu hình skip `model.visual`, `visual` và `lm_head`. Với Transformers 5.19.0, quy tắc khớp prefix khiến tên ngắn `visual` chưa đủ để loại trừ đường dẫn `model.visual`; mã đã kiểm tra nhánh visual không chứa Linear4bit. Ở E2/E3, projector được giữ ở float32; mọi tham số LoRA trainable cũng được chuyển sang float32 để GradScaler không gặp gradient fp16. Matmul vẫn đi qua autocast. Float32 là lựa chọn ổn định số của lab, không phải quy luật rằng mọi projector chỉ có thể train ở float32. Checkpoint lưu adapter và `projector.pt` riêng; inference kiểm tra và nạp lại cả hai cho E2/E3.
 
 ### Câu 6 — Chia theo phiên quay
 

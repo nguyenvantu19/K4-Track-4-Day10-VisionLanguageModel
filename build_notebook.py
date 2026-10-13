@@ -20,6 +20,8 @@ def main():
          "if not (REPO / 'README.md').exists():\n"
          "    subprocess.run(['git', 'clone', 'https://github.com/nguyenvantu19/K4-Track-4-Day10-VisionLanguageModel.git', str(REPO)], check=True)\n"
          "os.chdir(REPO)\n!nvidia-smi -L\n!pip -q install -r requirements-colab.txt pytest\n"
+         "# torchao không dùng trong lab bitsandbytes; bản có sẵn ở Colab xung đột PEFT.\n"
+         "!pip -q uninstall -y torchao\n"
          "!python -m pytest -q -k 'not test_report_template_has_student_markers_and_ten_questions'\n")
     md("## 1. Dữ liệu: tải và chia split theo phiên\n"
        "Dùng ZIP công khai của dataset đúng đề. Công cụ prepare_data giữ nguyên, không tự chia lại split.")

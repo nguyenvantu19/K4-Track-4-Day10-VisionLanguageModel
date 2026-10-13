@@ -112,6 +112,14 @@ def main(args):
 
     try:
         status("check data and model")
+        import importlib.metadata
+        environment = {"python": sys.version}
+        for package in ("torch", "torchvision", "transformers", "peft", "accelerate", "bitsandbytes", "torchao"):
+            try:
+                environment[package] = importlib.metadata.version(package)
+            except importlib.metadata.PackageNotFoundError:
+                environment[package] = None
+        write("report/environment.json", environment)
         run([python, "student_lab.py", "inspect-data"], "work/logs/checks.log")
         run([python, "student_lab.py", "verify-model"], "work/logs/checks.log")
         score("E0", infer("E0"))
@@ -141,6 +149,7 @@ def main(args):
         bundle = Path("work/lab_submission.zip")
         with zipfile.ZipFile(bundle, "w", zipfile.ZIP_DEFLATED) as archive:
             for item in ("student_lab.py", "run_lab.py", "make_report.py", "lab_day10.ipynb",
+                         "build_notebook.py", "student_checks.py", "data/splits/meta.json",
                          "REPORT.md", "README.md", "GUIDE.md", "RUBRIC.md", "requirements-colab.txt",
                          "pytest.ini", ".gitignore", ".env.example"):
                 if Path(item).exists():
@@ -149,6 +158,9 @@ def main(args):
                 for path in Path(directory).rglob("*"):
                     if path.is_file() and "__pycache__" not in path.parts:
                         archive.write(path, path.as_posix())
+            # Raw outputs support inspection/re-scoring; work/ remains ignored by Git.
+            for path in list(Path("work").glob("*.jsonl")) + list(Path("work").glob("*.run.json")):
+                archive.write(path, path.as_posix())
         print(f"All mandatory experiments completed. Artifact: {bundle.resolve()}", flush=True)
     except Exception as exc:
         status("failed", error=str(exc))
